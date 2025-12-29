@@ -19,20 +19,34 @@ async function fetchProgress(){
 
 function clearGroups(){ el('groups').innerHTML = '' }
 
-function buildGroup(title, entries){
-  const div = document.createElement('div')
-  div.className = 'group'
-  const h = document.createElement('h4')
-  h.innerText = title
-  div.appendChild(h)
+// Render a group according to the required reusable renderer logic
+function renderGroup(groupTitle, columns, rowData){
+  const section = document.createElement('section')
+  section.className = 'group'
+  const h = document.createElement('h3')
+  h.innerText = groupTitle
+  section.appendChild(h)
   const ul = document.createElement('ul')
-  entries.forEach(e=>{
-    const li = document.createElement('li')
-    li.innerHTML = `<strong>${e.k}:</strong> ${e.v}`
-    ul.appendChild(li)
+
+  columns.forEach(col => {
+    // special-case: ensure is_expert is always visible (render even if missing)
+    if(col === 'is_expert'){
+      const li = document.createElement('li')
+      const val = (rowData && (rowData[col] !== undefined && rowData[col] !== null && String(rowData[col]).trim() !== '')) ? rowData[col] : '(missing)'
+      li.innerHTML = `<strong>${col}:</strong> ${val}`
+      ul.appendChild(li)
+      return
+    }
+
+    if(rowData && rowData[col] !== undefined && rowData[col] !== null){
+      const li = document.createElement('li')
+      li.innerHTML = `<strong>${col}:</strong> ${rowData[col]}`
+      ul.appendChild(li)
+    }
   })
-  div.appendChild(ul)
-  return div
+
+  section.appendChild(ul)
+  return section
 }
 
 function renderCurrent(){
@@ -52,29 +66,42 @@ function renderCurrent(){
   const row = item.row || {}
   el('title').innerText = row.title || row.Title || '(no title)'
 
-  const metadataKeys = ['title','Title','author','Author','publication_year','publicationYear','year','Year','Genre','genre','description','Description']
-  const criticalKeys = ['is_expert','isExpert','critical_indicators','critical_flag']
-  const popularKeys = ['rating','average_rating','ratings_count','n_votes','total_weeks','best_rank']
-  const reviewKeys = ['review_text','review','summary']
-  const commercialKeys = ['Units_Sold','Gross_Sales','Sale_Price','Sales_Rank','SalesRank','sales_rank']
+  // Group definitions (must match specification exactly)
+  const metadataKeys = ['title','author','year','publication_year','description','Genre']
+  const criticalKeys = ['Author_Rating','total_weeks','best_rank','worst_rank','mean_rank','debut_rank']
+  const popularKeys = ['average_rating','ratings_count']
+  const reviewKeys = ['rating','review_text','n_votes','is_expert']
+  const commercialKeys = ['Units_Sold','Gross_Sales','Publisher_Revenue','Sale_Price','Sales_Rank']
 
-  function collect(keys){
-    const out = []
-    keys.forEach(k=>{ if(row[k] !== undefined && row[k] !== null && String(row[k]).trim()!=='') out.push({k:k,v:row[k]}) })
-    return out
+  // Render the five mandatory groups (always append the section; fields inside rendered only if present,
+  // except 'is_expert' which is always shown per requirement)
+  el('groups').appendChild(renderGroup('Metadata', metadataKeys, row))
+  el('groups').appendChild(renderGroup('Critical Success Indicators', criticalKeys, row))
+  el('groups').appendChild(renderGroup('Popular Success Indicators', popularKeys, row))
+  el('groups').appendChild(renderGroup('Review & Expertise', reviewKeys, row))
+  el('groups').appendChild(renderGroup('Commercial Success Indicators', commercialKeys, row))
+
+  // Additionally render any remaining columns present in the row (to ensure we don't silently drop any column).
+  // These will be grouped under 'Other Columns'. This ensures 100% of columns from the backend are visible.
+  const grouped = new Set([...metadataKeys, ...criticalKeys, ...popularKeys, ...reviewKeys, ...commercialKeys])
+  const otherKeys = Object.keys(row).filter(k => !grouped.has(k))
+  if(otherKeys.length){
+    const otherSection = document.createElement('section')
+    otherSection.className = 'group'
+    const h = document.createElement('h3')
+    h.innerText = 'Other Columns'
+    otherSection.appendChild(h)
+    const ul = document.createElement('ul')
+    otherKeys.sort().forEach(k => {
+      if(row[k] !== undefined && row[k] !== null){
+        const li = document.createElement('li')
+        li.innerHTML = `<strong>${k}:</strong> ${row[k]}`
+        ul.appendChild(li)
+      }
+    })
+    otherSection.appendChild(ul)
+    el('groups').appendChild(otherSection)
   }
-
-  const md = collect(metadataKeys)
-  const cr = collect(criticalKeys)
-  const pop = collect(popularKeys)
-  const rv = collect(reviewKeys)
-  const cm = collect(commercialKeys)
-
-  if(md.length) el('groups').appendChild(buildGroup('Metadata', md))
-  if(rv.length) el('groups').appendChild(buildGroup('Review & Expertise', rv))
-  if(cr.length) el('groups').appendChild(buildGroup('Critical indicators', cr))
-  if(pop.length) el('groups').appendChild(buildGroup('Popular indicators', pop))
-  if(cm.length) el('groups').appendChild(buildGroup('Commercial indicators', cm))
 
   el('critical_success_label').value = ''
   el('popular_success_label').value = ''
